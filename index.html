@@ -9,7 +9,16 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@late            position: relative;
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>          <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>       <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script> <style>
+        /* Modern görgetősáv */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #111827; }
+        ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
+        
+        /* Videó konténer arányainak megtartása */
+        .video-container {
+            position: relative;
             padding-bottom: 56.25%; /* 16:9 arány */
             height: 0;
             overflow: hidden;
@@ -216,6 +225,18 @@
                     window.history.pushState({path: currentUrl.href}, '', currentUrl.href);
                 }
             } catch (error) {}
+
+            // Automatikus teljes képernyő (első indításkor késleltetve)
+            const autoFullscreen = document.getElementById('autoFullscreen');
+            if (autoFullscreen && autoFullscreen.checked) {
+                setTimeout(() => {
+                    if (videoElement.requestFullscreen) {
+                        videoElement.requestFullscreen().catch(err => console.log(err));
+                    } else if (videoElement.webkitRequestFullscreen) {
+                        videoElement.webkitRequestFullscreen();
+                    }
+                }, 400);
+            }
         }
 
         function setUIBadge(text, classes) {
@@ -349,5 +370,4 @@
 
     </script>
 </body>
-</html>```
-
+</html>
