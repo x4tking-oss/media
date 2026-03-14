@@ -9,7 +9,11 @@
     
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     
-    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>          <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>       <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script> <style>
+    <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>          
+    <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>       
+    <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script> 
+    
+    <style>
         /* Modern görgetősáv */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #111827; }
@@ -27,13 +31,14 @@
             box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5);
             border: 1px solid #374151;
         }
-        .video-container video {
+        .video-container video, .video-container iframe {
             position: absolute;
             top: 0;
             left: 0;
             width: 100%;
             height: 100%;
             outline: none;
+            border: none;
         }
     </style>
 </head>
@@ -47,7 +52,7 @@
             </div>
             <div class="flex gap-2">
                 <span class="bg-blue-900 border border-blue-700 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded shadow-sm">
-                    MP4 • MKV • AVI • FLV • M3U8 • MPD
+                    MP4 • MKV • AVI • FLV • M3U8 • MPD • VIDEA
                 </span>
             </div>
         </div>
@@ -57,9 +62,21 @@
         
         <div class="flex-1 space-y-6">
             
+            <!-- FIGYELMEZTETÉS VIDEA ESETÉN -->
+            <div id="videaWarning" class="hidden bg-yellow-900/40 border border-yellow-700 rounded-xl p-4 flex items-start gap-3">
+                <i class="fa-solid fa-triangle-exclamation text-yellow-500 mt-1"></i>
+                <div>
+                    <h4 class="text-yellow-400 font-bold text-sm mb-1">Videa Statikus Link Észlelve!</h4>
+                    <p class="text-yellow-200/70 text-xs">A Videa blokkolja a "static" linkeket. Kérlek ezentúl az eredeti Videa oldali linket (pl. <i>videa.hu/videok/...</i>) másold be, és a rendszer automatikusan megoldja a beágyazást!</p>
+                </div>
+            </div>
+
             <div class="bg-gray-900 rounded-2xl p-4 shadow-2xl border border-gray-800">
                 <div class="video-container group">
-                    <video id="videoPlayer" controls crossorigin="anonymous"></video>
+                    <!-- Standard HTML5 Video -->
+                    <video id="videoPlayer" controls playsinline></video>
+                    <!-- Iframe a Videa és külső beágyazásokhoz -->
+                    <iframe id="iframePlayer" class="hidden" allowfullscreen allow="autoplay; fullscreen"></iframe>
                 </div>
                 <div class="mt-5 flex items-center justify-between px-2">
                     <h2 id="nowPlayingTitle" class="text-xl font-bold text-gray-100 truncate pr-4">Nincs kiválasztott média</h2>
@@ -70,7 +87,7 @@
             <div class="bg-gray-900 rounded-2xl p-6 shadow-xl border border-gray-800">
                 <h3 class="text-lg font-semibold mb-4 text-gray-200"><i class="fa-solid fa-link mr-2 text-blue-500"></i>Média URL megadása</h3>
                 <form id="streamForm" class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" id="streamUrl" placeholder="Videó link (pl. .mkv, .mp4, .m3u8, .flv)" 
+                    <input type="text" id="streamUrl" placeholder="Videó link (pl. .mkv, .mp4, .m3u8, videa.hu/videok/...)" 
                            class="flex-1 bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors" required>
                     <input type="text" id="streamName" placeholder="Megnevezés (opcionális)" 
                            class="w-full sm:w-48 bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors">
@@ -87,7 +104,7 @@
                     
                     <div class="flex items-center border-l border-gray-800 pl-6">
                         <input type="checkbox" id="useCodetabsProxy" class="w-4 h-4 text-green-500 bg-gray-800 border-gray-600 rounded focus:ring-green-500 focus:ring-2 cursor-pointer" checked>
-                        <label for="useCodetabsProxy" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer select-none"><i class="fa-solid fa-shield-halved text-green-500 mr-1"></i> Codetabs Proxy</label>
+                        <label for="useCodetabsProxy" id="proxyLabel" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer select-none"><i class="fa-solid fa-shield-halved text-green-500 mr-1"></i> Codetabs Proxy</label>
                     </div>
                 </div>
             </div>
@@ -103,7 +120,8 @@
                 </div>
                 
                 <div class="flex-1 overflow-y-auto p-3 space-y-2" id="playlistContainer">
-                    </div>
+                    <!-- Dinamikus lista helye -->
+                </div>
             </div>
         </div>
     </main>
@@ -111,10 +129,14 @@
     <script>
         // DOM Elemek
         const videoElement = document.getElementById('videoPlayer');
+        const iframeElement = document.getElementById('iframePlayer');
         const nowPlayingTitle = document.getElementById('nowPlayingTitle');
         const streamTypeBadge = document.getElementById('streamTypeBadge');
         const playlistContainer = document.getElementById('playlistContainer');
         const streamForm = document.getElementById('streamForm');
+        const proxyCheckbox = document.getElementById('useCodetabsProxy');
+        const proxyLabel = document.getElementById('proxyLabel');
+        const videaWarning = document.getElementById('videaWarning');
         
         // Lejátszó példányok
         let hlsPlayer = null;
@@ -136,41 +158,90 @@
             if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
             if (dashPlayer) { dashPlayer.reset(); dashPlayer = null; }
             if (flvPlayer) { flvPlayer.destroy(); flvPlayer = null; }
+            
             videoElement.src = "";
             videoElement.removeAttribute('src');
-            videoElement.load(); // Reset native player state
+            videoElement.load();
+            
+            iframeElement.src = "";
+            videaWarning.classList.add('hidden');
+            
+            // Alapértelmezésben a videó látszik, iframe rejtve
+            videoElement.classList.remove('hidden');
+            iframeElement.classList.add('hidden');
         }
 
         // Fő lejátszó logika (Több formátum támogatása)
         function playStream(originalUrl, name) {
             destroyAllPlayers();
             
-            // UI Frissítése
             nowPlayingTitle.textContent = name || "Ismeretlen média";
             streamTypeBadge.classList.remove('hidden');
 
-            // --- PROXY LOGIKA ---
-            const useProxy = document.getElementById('useCodetabsProxy').checked;
+            const lowercaseOriginalUrl = originalUrl.toLowerCase();
+            const isVidea = lowercaseOriginalUrl.includes('videa.hu');
+
+            // --- VIDEA OKOS FELDOLGOZÁSA ---
+            if (isVidea) {
+                console.log("Videa link feldolgozása...");
+                proxyCheckbox.checked = false; // Proxy nem kell iframe-hez
+                proxyLabel.classList.add('opacity-50');
+                
+                videoElement.classList.add('hidden');
+                iframeElement.classList.remove('hidden');
+                
+                let embedUrl = originalUrl;
+
+                // 1. Eset: Ha "videa.hu/videok/" linket ad meg (Legjobb eset)
+                if (lowercaseOriginalUrl.includes('videa.hu/videok/')) {
+                    const parts = originalUrl.split('-');
+                    const videoId = parts[parts.length - 1]; // Az ID a kötőjel után van
+                    embedUrl = `https://videa.hu/player?v=${videoId}`;
+                } 
+                // 2. Eset: Ha már eleve az embed linket (player?v=) adja meg
+                else if (lowercaseOriginalUrl.includes('videa.hu/player')) {
+                    embedUrl = originalUrl;
+                }
+                // 3. Eset: Statikus link (ezt tiltják, kiírjuk a figyelmeztetést)
+                else if (lowercaseOriginalUrl.includes('videa.hu/static/')) {
+                    videaWarning.classList.remove('hidden');
+                    // Megpróbáljuk betölteni, de jönni fog a védett hiba ikon a Videa részéről
+                    embedUrl = originalUrl;
+                }
+
+                iframeElement.src = embedUrl;
+                
+                setUIBadge("VIDEA PLAYER", "bg-pink-900 text-pink-300 border border-pink-700");
+                saveToHistory(originalUrl, name);
+                updateUrlParams(originalUrl, name);
+                
+                // Automatikus fullscreen Iframe-re
+                const autoFullscreen = document.getElementById('autoFullscreen');
+                if (autoFullscreen && autoFullscreen.checked) {
+                    setTimeout(() => {
+                        if (iframeElement.requestFullscreen) {
+                            iframeElement.requestFullscreen().catch(err => console.log(err));
+                        }
+                    }, 1000);
+                }
+                return; // Kilépünk a normál folyamatból, mert a Videa megoldva.
+            }
+
+            // Normál lejátszás visszaállítása (Nem Videa esetén)
+            proxyLabel.classList.remove('opacity-50');
+            const useProxy = proxyCheckbox.checked;
             let playUrl = originalUrl;
             
             if (useProxy) {
                 playUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(originalUrl)}`;
                 console.log("Codetabs proxy aktív: ", playUrl);
             }
-
-            // Mindig az eredeti URL kiterjesztését vizsgáljuk
-            const lowercaseOriginalUrl = originalUrl.toLowerCase();
             
             // 1. HLS (.m3u8)
             if (lowercaseOriginalUrl.includes('.m3u8')) {
                 setUIBadge(useProxy ? "HLS (PROXY)" : "HLS", "bg-purple-900 text-purple-300 border border-purple-700");
                 if (Hls.isSupported()) {
-                    hlsPlayer = new Hls({ 
-                        debug: false,
-                        xhrSetup: function(xhr, url) {
-                            xhr.withCredentials = false; // Fontos a proxy működéséhez
-                        }
-                    });
+                    hlsPlayer = new Hls({ xhrSetup: function(xhr) { xhr.withCredentials = false; }});
                     hlsPlayer.loadSource(playUrl);
                     hlsPlayer.attachMedia(videoElement);
                     hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play().catch(e=>console.log(e)));
@@ -195,27 +266,21 @@
                     flvPlayer.attachMediaElement(videoElement);
                     flvPlayer.load();
                     flvPlayer.play().catch(e=>console.log(e));
-                } else {
-                    alert("A böngésződ nem támogatja az FLV formátumot.");
                 }
             }
-            // 4. MKV / AVI (Kísérleti natív támogatás)
-            else if (lowercaseOriginalUrl.includes('.mkv') || lowercaseOriginalUrl.includes('.avi')) {
-                setUIBadge(useProxy ? "MKV/AVI (PROXY)" : "NATIVE MKV/AVI", "bg-yellow-900 text-yellow-300 border border-yellow-700");
-                videoElement.src = playUrl;
-                videoElement.play().catch(e => console.log("Automatikus lejátszás blokkolva"));
-            }
-            // 5. Standard MP4 / WEBM / MOV / Egyéb
+            // 4. MKV / AVI / MP4
             else {
-                setUIBadge(useProxy ? "MP4 (PROXY)" : "MP4 / WEBM", "bg-blue-900 text-blue-300 border border-blue-700");
+                setUIBadge(useProxy ? "MP4/MKV (PROXY)" : "MP4 / WEBM", "bg-blue-900 text-blue-300 border border-blue-700");
                 videoElement.src = playUrl;
                 videoElement.play().catch(e => console.log("Automatikus lejátszás blokkolva"));
             }
 
-            // Mindig az eredeti URL-t mentjük az előzményekbe!
             saveToHistory(originalUrl, name);
+            updateUrlParams(originalUrl, name);
+            checkAutoFullscreen();
+        }
 
-            // Dinamikus URL frissítés (szintén az eredeti URL-lel)
+        function updateUrlParams(originalUrl, name) {
             try {
                 if (!window.location.href.startsWith('blob:')) {
                     const currentUrl = new URL(window.location.href);
@@ -225,8 +290,9 @@
                     window.history.pushState({path: currentUrl.href}, '', currentUrl.href);
                 }
             } catch (error) {}
+        }
 
-            // Automatikus teljes képernyő (első indításkor késleltetve)
+        function checkAutoFullscreen() {
             const autoFullscreen = document.getElementById('autoFullscreen');
             if (autoFullscreen && autoFullscreen.checked) {
                 setTimeout(() => {
@@ -278,12 +344,12 @@
                 const item = document.createElement('div');
                 item.className = "flex items-center justify-between p-3 bg-gray-950 rounded-xl hover:bg-gray-800 cursor-pointer transition-all border border-gray-800 hover:border-blue-500 group";
                 
-                let iconClass = "fa-film text-blue-400"; // Default
+                let iconClass = "fa-film text-blue-400";
                 const lUrl = stream.url.toLowerCase();
-                if(lUrl.includes('.m3u8')) iconClass = "fa-broadcast-tower text-purple-400";
+                if(lUrl.includes('videa.hu')) iconClass = "fa-play-circle text-pink-400";
+                else if(lUrl.includes('.m3u8')) iconClass = "fa-broadcast-tower text-purple-400";
                 else if(lUrl.includes('.mpd')) iconClass = "fa-satellite-dish text-orange-400";
                 else if(lUrl.includes('.flv')) iconClass = "fa-fire text-red-400";
-                else if(lUrl.includes('.mkv') || lUrl.includes('.avi')) iconClass = "fa-file-video text-yellow-400";
 
                 item.innerHTML = `
                     <div class="flex items-center overflow-hidden pr-3 w-full">
@@ -310,21 +376,15 @@
             });
         }
 
-        // --- ÚJ FUNKCIÓ: AUTOMATIKUS TELJES KÉPERNYŐ INDÍTÁSKOR/FOLYTATÁSKOR ---
         videoElement.addEventListener('play', () => {
             const autoFullscreen = document.getElementById('autoFullscreen');
-            
-            // Ha be van pipálva az "Auto Fullscreen" és jelenleg nincs teljes képernyőn
             if (autoFullscreen && autoFullscreen.checked && !document.fullscreenElement) {
                 if (videoElement.requestFullscreen) {
                     videoElement.requestFullscreen().catch(err => console.log("Fullscreen blokkolva:", err));
-                } else if (videoElement.webkitRequestFullscreen) { /* Safari */
-                    videoElement.webkitRequestFullscreen();
                 }
             }
         });
 
-        // Eseménykezelők
         streamForm.addEventListener('submit', (e) => {
             e.preventDefault();
             const url = document.getElementById('streamUrl').value.trim();
@@ -342,7 +402,6 @@
             }
         });
 
-        // Videó Dupla kattintás - Teljes képernyő (mint a klasszikusban)
         videoElement.addEventListener('dblclick', () => {
             if (!document.fullscreenElement) {
                 if (videoElement.requestFullscreen) videoElement.requestFullscreen();
@@ -352,10 +411,8 @@
             }
         });
 
-        // Inicializálás
         renderPlaylist();
 
-        // URL paraméterek ellenőrzése
         window.addEventListener('DOMContentLoaded', () => {
             const urlParams = new URLSearchParams(window.location.search);
             const streamUrl = urlParams.get('url');
