@@ -3,27 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MeluaPlay - Modern Ultimate Lejátszó</title>
+    <title>MeluaPlay - Kétcsatornás Lejátszó</title>
     
     <script src="https://cdn.tailwindcss.com"></script>
-    
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>          
     <script src="https://cdn.dashjs.org/latest/dash.all.min.js"></script>       
     <script src="https://cdn.jsdelivr.net/npm/flv.js@latest/dist/flv.min.js"></script> 
     
     <style>
-        /* Modern görgetősáv */
         ::-webkit-scrollbar { width: 8px; }
         ::-webkit-scrollbar-track { background: #111827; }
         ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
         ::-webkit-scrollbar-thumb:hover { background: #4b5563; }
         
-        /* Videó konténer arányainak megtartása */
         .video-container {
             position: relative;
-            padding-bottom: 56.25%; /* 16:9 arány */
+            padding-bottom: 56.25%;
             height: 0;
             overflow: hidden;
             background-color: #000;
@@ -40,6 +36,24 @@
             outline: none;
             border: none;
         }
+        
+        video::cue {
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            font-size: 1.2rem;
+            font-family: sans-serif;
+        }
+
+        .loader {
+            border: 3px solid #1f2937;
+            border-top: 3px solid #3b82f6;
+            border-radius: 50%;
+            width: 20px;
+            height: 20px;
+            animation: spin 1s linear infinite;
+            display: none;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body class="bg-gray-950 text-gray-100 min-h-screen font-sans selection:bg-blue-500 selection:text-white">
@@ -48,12 +62,10 @@
         <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex justify-between items-center">
             <div class="flex items-center space-x-3 text-blue-500">
                 <i class="fa-solid fa-play-circle text-3xl"></i>
-                <h1 class="text-2xl font-bold text-white tracking-wide">Melua<span class="text-blue-500">Play</span> <span class="text-sm font-normal text-gray-400 ml-2 hidden sm:inline-block">Ultimate</span></h1>
+                <h1 class="text-2xl font-bold text-white tracking-wide">Melua<span class="text-blue-500">Play</span></h1>
             </div>
-            <div class="flex gap-2">
-                <span class="bg-blue-900 border border-blue-700 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded shadow-sm">
-                    MP4 • MKV • AVI • FLV • M3U8 • MPD • VIDEA
-                </span>
+            <div class="hidden sm:flex gap-2">
+                <span class="bg-blue-900 border border-blue-700 text-blue-300 text-xs font-semibold px-2.5 py-1 rounded shadow-sm uppercase">Kétcsatornás mód</span>
             </div>
         </div>
     </header>
@@ -62,369 +74,279 @@
         
         <div class="flex-1 space-y-6">
             
-            <!-- FIGYELMEZTETÉS VIDEA ESETÉN -->
-            <div id="videaWarning" class="hidden bg-yellow-900/40 border border-yellow-700 rounded-xl p-4 flex items-start gap-3">
-                <i class="fa-solid fa-triangle-exclamation text-yellow-500 mt-1"></i>
-                <div>
-                    <h4 class="text-yellow-400 font-bold text-sm mb-1">Videa Statikus Link Észlelve!</h4>
-                    <p class="text-yellow-200/70 text-xs">A Videa blokkolja a "static" linkeket. Kérlek ezentúl az eredeti Videa oldali linket (pl. <i>videa.hu/videok/...</i>) másold be, és a rendszer automatikusan megoldja a beágyazást!</p>
+            <!-- Státusz visszajelző -->
+            <div id="hunterStatus" class="hidden bg-blue-900/40 border border-blue-700 rounded-xl p-4 flex items-center justify-between gap-3">
+                <div class="flex items-center gap-3">
+                    <div class="loader" id="statusLoader"></div>
+                    <span class="text-blue-300 text-sm font-semibold" id="hunterText">Weboldal elemzése...</span>
                 </div>
             </div>
 
             <div class="bg-gray-900 rounded-2xl p-4 shadow-2xl border border-gray-800">
                 <div class="video-container group">
-                    <!-- Standard HTML5 Video -->
-                    <video id="videoPlayer" controls playsinline></video>
-                    <!-- Iframe a Videa és külső beágyazásokhoz -->
+                    <video id="videoPlayer" crossorigin="anonymous" controls playsinline></video>
                     <iframe id="iframePlayer" class="hidden" allowfullscreen allow="autoplay; fullscreen"></iframe>
                 </div>
-                <div class="mt-5 flex items-center justify-between px-2">
-                    <h2 id="nowPlayingTitle" class="text-xl font-bold text-gray-100 truncate pr-4">Nincs kiválasztott média</h2>
-                    <span id="streamTypeBadge" class="hidden text-xs font-bold px-3 py-1.5 rounded-md tracking-wider uppercase"></span>
+                
+                <div class="mt-5 flex items-center justify-between px-2 flex-wrap gap-3">
+                    <h2 id="nowPlayingTitle" class="text-xl font-bold text-gray-100 truncate flex-1 min-w-[200px]">Nincs kiválasztott média</h2>
+                    
+                    <div class="flex items-center gap-3">
+                        <!-- Felirat választó (ha több is van) -->
+                        <div id="subtitleContainer" class="hidden flex items-center gap-2 bg-gray-800 border border-gray-700 px-3 py-1.5 rounded-lg transition-all">
+                            <i class="fa-solid fa-closed-captioning text-gray-400"></i>
+                            <select id="subtitleSelector" class="bg-transparent text-sm font-semibold text-white outline-none cursor-pointer">
+                                <option value="-1">Felirat: Ki</option>
+                            </select>
+                        </div>
+                        <span id="streamTypeBadge" class="hidden text-xs font-bold px-3 py-1.5 rounded-md tracking-wider uppercase"></span>
+                    </div>
                 </div>
             </div>
 
+            <!-- KÉT LINKES BEVITELI MEZŐ -->
             <div class="bg-gray-900 rounded-2xl p-6 shadow-xl border border-gray-800">
-                <h3 class="text-lg font-semibold mb-4 text-gray-200"><i class="fa-solid fa-link mr-2 text-blue-500"></i>Média URL megadása</h3>
-                <form id="streamForm" class="flex flex-col sm:flex-row gap-3">
-                    <input type="text" id="streamUrl" placeholder="Videó link (pl. .mkv, .mp4, .m3u8, videa.hu/videok/...)" 
-                           class="flex-1 bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors" required>
-                    <input type="text" id="streamName" placeholder="Megnevezés (opcionális)" 
-                           class="w-full sm:w-48 bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors">
-                    <button type="submit" class="text-white bg-blue-600 hover:bg-blue-500 focus:ring-4 focus:outline-none focus:ring-blue-800 font-bold rounded-lg text-sm px-6 py-3.5 text-center transition-all shadow-lg hover:shadow-blue-500/30">
-                        <i class="fa-solid fa-play mr-2"></i> Indítás
-                    </button>
+                <h3 class="text-lg font-semibold mb-4 text-gray-200"><i class="fa-solid fa-link mr-2 text-blue-500"></i>Média és Felirat megadása</h3>
+                
+                <form id="streamForm" class="space-y-4">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-gray-500 uppercase ml-1">Videó Link / Weboldal</label>
+                            <input type="text" id="streamUrl" placeholder="Pl: .m3u8, .mp4 vagy filmoldal.hu" 
+                                   class="w-full bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors" required>
+                        </div>
+                        <div class="space-y-2">
+                            <label class="text-xs font-bold text-gray-500 uppercase ml-1">Külön Felirat Link (Opcionális)</label>
+                            <input type="text" id="subtitleUrl" placeholder="Pl: felirat.vtt vagy .srt" 
+                                   class="w-full bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors">
+                        </div>
+                    </div>
+                    
+                    <div class="flex flex-col sm:flex-row gap-4 items-end">
+                        <div class="flex-1 space-y-2 w-full">
+                            <label class="text-xs font-bold text-gray-500 uppercase ml-1">Megnevezés</label>
+                            <input type="text" id="streamName" placeholder="Film vagy sorozat címe" 
+                                   class="w-full bg-gray-950 border border-gray-700 text-white text-sm rounded-lg focus:ring-blue-500 focus:border-blue-500 block p-3.5 transition-colors">
+                        </div>
+                        <button type="submit" class="w-full sm:w-auto text-white bg-blue-600 hover:bg-blue-500 focus:ring-4 focus:outline-none focus:ring-blue-800 font-bold rounded-lg text-sm px-10 py-3.5 text-center transition-all shadow-lg hover:shadow-blue-500/30">
+                            <i class="fa-solid fa-play mr-2"></i> Indítás
+                        </button>
+                    </div>
                 </form>
                 
-                <div class="mt-5 flex flex-wrap items-center bg-gray-950 p-3 rounded-lg border border-gray-800 w-fit gap-6">
+                <div class="mt-6 flex flex-wrap items-center bg-gray-950 p-3 rounded-lg border border-gray-800 w-fit gap-6">
                     <div class="flex items-center">
                         <input type="checkbox" id="autoFullscreen" class="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500 focus:ring-2 cursor-pointer" checked>
                         <label for="autoFullscreen" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer select-none">Auto Fullscreen</label>
                     </div>
-                    
                     <div class="flex items-center border-l border-gray-800 pl-6">
-                        <input type="checkbox" id="useCodetabsProxy" class="w-4 h-4 text-green-500 bg-gray-800 border-gray-600 rounded focus:ring-green-500 focus:ring-2 cursor-pointer" checked>
-                        <label for="useCodetabsProxy" id="proxyLabel" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer select-none"><i class="fa-solid fa-shield-halved text-green-500 mr-1"></i> Codetabs Proxy</label>
+                        <input type="checkbox" id="useProxy" class="w-4 h-4 text-green-500 bg-gray-800 border-gray-600 rounded focus:ring-green-500 focus:ring-2 cursor-pointer" checked>
+                        <label for="useProxy" class="ml-2 text-sm font-medium text-gray-300 cursor-pointer select-none"><i class="fa-solid fa-shield-halved text-green-500 mr-1"></i> Proxy (CORS javítás)</label>
                     </div>
                 </div>
             </div>
         </div>
 
+        <!-- ELŐZMÉNYEK -->
         <div class="w-full lg:w-96 space-y-6">
             <div class="bg-gray-900 rounded-2xl shadow-xl border border-gray-800 overflow-hidden flex flex-col h-[650px]">
                 <div class="p-5 border-b border-gray-800 bg-gray-900/50 flex justify-between items-center backdrop-blur-sm">
                     <h3 class="text-lg font-semibold text-gray-200"><i class="fa-solid fa-history mr-2 text-blue-500"></i>Előzmények</h3>
-                    <button id="clearHistoryBtn" class="text-gray-500 hover:text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors" title="Előzmények törlése">
+                    <button id="clearHistoryBtn" class="text-gray-500 hover:text-red-500 hover:bg-red-500/10 p-2 rounded-lg transition-colors">
                         <i class="fa-solid fa-trash-alt"></i>
                     </button>
                 </div>
-                
-                <div class="flex-1 overflow-y-auto p-3 space-y-2" id="playlistContainer">
-                    <!-- Dinamikus lista helye -->
-                </div>
+                <div class="flex-1 overflow-y-auto p-3 space-y-2" id="playlistContainer"></div>
             </div>
         </div>
     </main>
 
     <script>
-        // DOM Elemek
-        const videoElement = document.getElementById('videoPlayer');
-        const iframeElement = document.getElementById('iframePlayer');
-        const nowPlayingTitle = document.getElementById('nowPlayingTitle');
-        const streamTypeBadge = document.getElementById('streamTypeBadge');
-        const playlistContainer = document.getElementById('playlistContainer');
-        const streamForm = document.getElementById('streamForm');
-        const proxyCheckbox = document.getElementById('useCodetabsProxy');
-        const proxyLabel = document.getElementById('proxyLabel');
-        const videaWarning = document.getElementById('videaWarning');
+        const video = document.getElementById('videoPlayer');
+        const iframe = document.getElementById('iframePlayer');
+        const nowPlaying = document.getElementById('nowPlayingTitle');
+        const badge = document.getElementById('streamTypeBadge');
+        const playlist = document.getElementById('playlistContainer');
+        const form = document.getElementById('streamForm');
         
-        // Lejátszó példányok
-        let hlsPlayer = null;
-        let dashPlayer = null;
-        let flvPlayer = null;
+        const hunterStatus = document.getElementById('hunterStatus');
+        const hunterText = document.getElementById('hunterText');
+        const loader = document.getElementById('statusLoader');
 
-        // Példa streamek
-        const defaultStreams = [
-            { name: "Példa HLS (.m3u8)", url: "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
-            { name: "Példa DASH (.mpd)", url: "https://dash.akamaized.net/akamai/bbb_30fps/bbb_30fps.mpd" },
-            { name: "Példa MP4", url: "http://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4" }
-        ];
+        let hls = null;
+        let dash = null;
+        let history = JSON.parse(localStorage.getItem('meluaHistory_v7')) || [];
 
-        // Előzmények betöltése
-        let streamHistory = JSON.parse(localStorage.getItem('meluaPlayHistory_v3')) || defaultStreams;
-
-        // Lejátszók takarítása váltáskor
-        function destroyAllPlayers() {
-            if (hlsPlayer) { hlsPlayer.destroy(); hlsPlayer = null; }
-            if (dashPlayer) { dashPlayer.reset(); dashPlayer = null; }
-            if (flvPlayer) { flvPlayer.destroy(); flvPlayer = null; }
+        // --- WEB VADÁSZ LOGIKA ---
+        async function hunter(url, name) {
+            hunterStatus.classList.remove('hidden');
+            loader.style.display = 'block';
+            hunterText.textContent = "Videó és felirat keresése a weboldalon...";
             
-            videoElement.src = "";
-            videoElement.removeAttribute('src');
-            videoElement.load();
-            
-            iframeElement.src = "";
-            videaWarning.classList.add('hidden');
-            
-            // Alapértelmezésben a videó látszik, iframe rejtve
-            videoElement.classList.remove('hidden');
-            iframeElement.classList.add('hidden');
-        }
-
-        // Fő lejátszó logika (Több formátum támogatása)
-        function playStream(originalUrl, name) {
-            destroyAllPlayers();
-            
-            nowPlayingTitle.textContent = name || "Ismeretlen média";
-            streamTypeBadge.classList.remove('hidden');
-
-            const lowercaseOriginalUrl = originalUrl.toLowerCase();
-            const isVidea = lowercaseOriginalUrl.includes('videa.hu');
-
-            // --- VIDEA OKOS FELDOLGOZÁSA ---
-            if (isVidea) {
-                console.log("Videa link feldolgozása...");
-                proxyCheckbox.checked = false; // Proxy nem kell iframe-hez
-                proxyLabel.classList.add('opacity-50');
-                
-                videoElement.classList.add('hidden');
-                iframeElement.classList.remove('hidden');
-                
-                let embedUrl = originalUrl;
-
-                // 1. Eset: Ha "videa.hu/videok/" linket ad meg (Legjobb eset)
-                if (lowercaseOriginalUrl.includes('videa.hu/videok/')) {
-                    const parts = originalUrl.split('-');
-                    const videoId = parts[parts.length - 1]; // Az ID a kötőjel után van
-                    embedUrl = `https://videa.hu/player?v=${videoId}`;
-                } 
-                // 2. Eset: Ha már eleve az embed linket (player?v=) adja meg
-                else if (lowercaseOriginalUrl.includes('videa.hu/player')) {
-                    embedUrl = originalUrl;
-                }
-                // 3. Eset: Statikus link (ezt tiltják, kiírjuk a figyelmeztetést)
-                else if (lowercaseOriginalUrl.includes('videa.hu/static/')) {
-                    videaWarning.classList.remove('hidden');
-                    // Megpróbáljuk betölteni, de jönni fog a védett hiba ikon a Videa részéről
-                    embedUrl = originalUrl;
-                }
-
-                iframeElement.src = embedUrl;
-                
-                setUIBadge("VIDEA PLAYER", "bg-pink-900 text-pink-300 border border-pink-700");
-                saveToHistory(originalUrl, name);
-                updateUrlParams(originalUrl, name);
-                
-                // Automatikus fullscreen Iframe-re
-                const autoFullscreen = document.getElementById('autoFullscreen');
-                if (autoFullscreen && autoFullscreen.checked) {
-                    setTimeout(() => {
-                        if (iframeElement.requestFullscreen) {
-                            iframeElement.requestFullscreen().catch(err => console.log(err));
-                        }
-                    }, 1000);
-                }
-                return; // Kilépünk a normál folyamatból, mert a Videa megoldva.
-            }
-
-            // Normál lejátszás visszaállítása (Nem Videa esetén)
-            proxyLabel.classList.remove('opacity-50');
-            const useProxy = proxyCheckbox.checked;
-            let playUrl = originalUrl;
-            
-            if (useProxy) {
-                playUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(originalUrl)}`;
-                console.log("Codetabs proxy aktív: ", playUrl);
-            }
-            
-            // 1. HLS (.m3u8)
-            if (lowercaseOriginalUrl.includes('.m3u8')) {
-                setUIBadge(useProxy ? "HLS (PROXY)" : "HLS", "bg-purple-900 text-purple-300 border border-purple-700");
-                if (Hls.isSupported()) {
-                    hlsPlayer = new Hls({ xhrSetup: function(xhr) { xhr.withCredentials = false; }});
-                    hlsPlayer.loadSource(playUrl);
-                    hlsPlayer.attachMedia(videoElement);
-                    hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => videoElement.play().catch(e=>console.log(e)));
-                } else if (videoElement.canPlayType('application/vnd.apple.mpegurl')) {
-                    videoElement.src = playUrl;
-                    videoElement.addEventListener('loadedmetadata', () => videoElement.play());
-                } else {
-                    alert("A böngésződ nem támogatja a HLS lejátszást.");
-                }
-            } 
-            // 2. DASH (.mpd)
-            else if (lowercaseOriginalUrl.includes('.mpd')) {
-                setUIBadge(useProxy ? "DASH (PROXY)" : "DASH", "bg-orange-900 text-orange-300 border border-orange-700");
-                dashPlayer = dashjs.MediaPlayer().create();
-                dashPlayer.initialize(videoElement, playUrl, true);
-            } 
-            // 3. FLV (.flv)
-            else if (lowercaseOriginalUrl.includes('.flv')) {
-                setUIBadge(useProxy ? "FLV (PROXY)" : "FLV", "bg-red-900 text-red-300 border border-red-700");
-                if (flvjs.isSupported()) {
-                    flvPlayer = flvjs.createPlayer({ type: 'flv', url: playUrl });
-                    flvPlayer.attachMediaElement(videoElement);
-                    flvPlayer.load();
-                    flvPlayer.play().catch(e=>console.log(e));
-                }
-            }
-            // 4. MKV / AVI / MP4
-            else {
-                setUIBadge(useProxy ? "MP4/MKV (PROXY)" : "MP4 / WEBM", "bg-blue-900 text-blue-300 border border-blue-700");
-                videoElement.src = playUrl;
-                videoElement.play().catch(e => console.log("Automatikus lejátszás blokkolva"));
-            }
-
-            saveToHistory(originalUrl, name);
-            updateUrlParams(originalUrl, name);
-            checkAutoFullscreen();
-        }
-
-        function updateUrlParams(originalUrl, name) {
             try {
-                if (!window.location.href.startsWith('blob:')) {
-                    const currentUrl = new URL(window.location.href);
-                    currentUrl.searchParams.set('url', originalUrl);
-                    if (name) currentUrl.searchParams.set('name', name);
-                    else currentUrl.searchParams.delete('name');
-                    window.history.pushState({path: currentUrl.href}, '', currentUrl.href);
+                const proxy = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(url)}`;
+                const res = await fetch(proxy);
+                const html = await res.text();
+
+                const m3u8Match = html.match(/(https?:\/\/[^"'\s>]+?\.m3u8[^"'\s>]*)/i);
+                const subMatch = html.match(/(https?:\/\/[^"'\s>]+?\.(vtt|srt)[^"'\s>]*)/i);
+
+                if (m3u8Match) {
+                    hunterText.textContent = "Siker! Linkek kinyerve.";
+                    setTimeout(() => hunterStatus.classList.add('hidden'), 2000);
+                    play(m3u8Match[1], name, subMatch ? subMatch[1] : "");
+                } else {
+                    throw new Error("Nem található videó link az oldalon.");
                 }
-            } catch (error) {}
-        }
-
-        function checkAutoFullscreen() {
-            const autoFullscreen = document.getElementById('autoFullscreen');
-            if (autoFullscreen && autoFullscreen.checked) {
-                setTimeout(() => {
-                    if (videoElement.requestFullscreen) {
-                        videoElement.requestFullscreen().catch(err => console.log(err));
-                    } else if (videoElement.webkitRequestFullscreen) {
-                        videoElement.webkitRequestFullscreen();
-                    }
-                }, 400);
+            } catch (e) {
+                loader.style.display = 'none';
+                hunterText.textContent = "Hiba: " + e.message;
+                setTimeout(() => hunterStatus.classList.add('hidden'), 4000);
             }
         }
 
-        function setUIBadge(text, classes) {
-            streamTypeBadge.textContent = text;
-            streamTypeBadge.className = `text-xs font-bold px-3 py-1.5 rounded-md tracking-wider uppercase ${classes}`;
+        // --- LEJÁTSZÓ TISZTÍTÁSA ---
+        function reset() {
+            if (hls) { hls.destroy(); hls = null; }
+            if (dash) { dash.reset(); dash = null; }
+            video.querySelectorAll('track').forEach(t => t.remove());
+            video.src = ""; video.load();
+            iframe.src = "";
+            video.classList.remove('hidden');
+            iframe.classList.add('hidden');
+            document.getElementById('subtitleContainer').classList.add('hidden');
         }
 
-        // Előzmények kezelése
-        function saveToHistory(url, name) {
-            const displayName = name || url.split('/').pop() || "Új Média";
-            const existsIndex = streamHistory.findIndex(s => s.url === url);
+        // --- FŐ LEJÁTSZÁS ---
+        function play(videoUrl, name, subUrl = "") {
+            reset();
+            nowPlaying.textContent = name || "Ismeretlen média";
+            const useProxy = document.getElementById('useProxy').checked;
             
-            if (existsIndex > -1) {
-                const existing = streamHistory.splice(existsIndex, 1)[0];
-                existing.name = displayName; 
-                streamHistory.unshift(existing);
-            } else {
-                streamHistory.unshift({ name: displayName, url: url });
+            let finalVideoUrl = videoUrl;
+            let finalSubUrl = subUrl;
+
+            if (useProxy) {
+                finalVideoUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(videoUrl)}`;
+                if (subUrl) finalSubUrl = `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(subUrl)}`;
             }
 
-            if (streamHistory.length > 30) streamHistory.pop();
-            localStorage.setItem('meluaPlayHistory_v3', JSON.stringify(streamHistory));
-            renderPlaylist();
-        }
-
-        function renderPlaylist() {
-            playlistContainer.innerHTML = '';
-            
-            if (streamHistory.length === 0) {
-                playlistContainer.innerHTML = `
-                    <div class="flex flex-col items-center justify-center h-40 text-gray-500">
-                        <i class="fa-solid fa-folder-open text-3xl mb-3 opacity-50"></i>
-                        <p class="text-sm">Nincsenek mentett média fájlok.</p>
-                    </div>`;
-                return;
-            }
-
-            streamHistory.forEach(stream => {
-                const item = document.createElement('div');
-                item.className = "flex items-center justify-between p-3 bg-gray-950 rounded-xl hover:bg-gray-800 cursor-pointer transition-all border border-gray-800 hover:border-blue-500 group";
+            // Külön felirat hozzáadása
+            if (subUrl) {
+                const track = document.createElement('track');
+                track.kind = 'subtitles';
+                track.label = 'Külső Felirat';
+                track.srclang = 'hu';
+                track.src = finalSubUrl;
+                track.default = true;
+                video.appendChild(track);
                 
-                let iconClass = "fa-film text-blue-400";
-                const lUrl = stream.url.toLowerCase();
-                if(lUrl.includes('videa.hu')) iconClass = "fa-play-circle text-pink-400";
-                else if(lUrl.includes('.m3u8')) iconClass = "fa-broadcast-tower text-purple-400";
-                else if(lUrl.includes('.mpd')) iconClass = "fa-satellite-dish text-orange-400";
-                else if(lUrl.includes('.flv')) iconClass = "fa-fire text-red-400";
+                document.getElementById('subtitleContainer').classList.remove('hidden');
+                
+                const subSelect = document.getElementById('subtitleSelector');
+                subSelect.innerHTML = '<option value="-1">Felirat: Ki</option><option value="ext" selected>Külső Felirat (Aktív)</option>';
+                
+                // Menü gomb eseménye
+                subSelect.onchange = (e) => {
+                    const isVisible = e.target.value === 'ext';
+                    for(let i=0; i<video.textTracks.length; i++) {
+                        video.textTracks[i].mode = isVisible ? 'showing' : 'hidden';
+                    }
+                };
 
-                item.innerHTML = `
-                    <div class="flex items-center overflow-hidden pr-3 w-full">
-                        <div class="w-12 h-12 rounded-lg bg-gray-900 flex items-center justify-center flex-shrink-0 mr-4 shadow-inner group-hover:bg-black transition-colors">
-                            <i class="fa-solid ${iconClass} text-lg"></i>
-                        </div>
-                        <div class="truncate flex-1">
-                            <p class="text-sm font-bold text-gray-200 truncate group-hover:text-blue-400 transition-colors">${stream.name}</p>
-                            <p class="text-xs text-gray-500 truncate mt-1">${stream.url}</p>
-                        </div>
-                    </div>
-                    <button class="play-btn text-gray-600 group-hover:text-blue-500 transition-colors p-2" title="Lejátszás">
-                        <i class="fa-solid fa-play"></i>
-                    </button>
-                `;
-
-                item.addEventListener('click', () => {
-                    document.getElementById('streamUrl').value = stream.url;
-                    document.getElementById('streamName').value = stream.name;
-                    playStream(stream.url, stream.name);
+                // Kőkemény kényszerítés a böngészőnek, hogy jelenítse meg
+                track.addEventListener('load', () => {
+                    track.track.mode = 'showing';
                 });
                 
-                playlistContainer.appendChild(item);
+                setTimeout(() => {
+                    for(let i=0; i<video.textTracks.length; i++) {
+                        video.textTracks[i].mode = 'showing';
+                    }
+                }, 800);
+            }
+
+            const lUrl = videoUrl.toLowerCase();
+
+            if (lUrl.includes('.m3u8')) {
+                badge.textContent = "HLS"; badge.className = "text-xs font-bold px-3 py-1.5 rounded-md bg-purple-900 text-purple-300 border border-purple-700";
+                if (Hls.isSupported()) {
+                    hls = new Hls();
+                    hls.loadSource(finalVideoUrl);
+                    hls.attachMedia(video);
+                    hls.on(Hls.Events.MANIFEST_PARSED, () => video.play());
+                }
+            } else if (lUrl.includes('.mpd')) {
+                badge.textContent = "DASH"; badge.className = "text-xs font-bold px-3 py-1.5 rounded-md bg-orange-900 text-orange-300 border border-orange-700";
+                dash = dashjs.MediaPlayer().create();
+                dash.initialize(video, finalVideoUrl, true);
+            } else {
+                badge.textContent = "DIRECT"; badge.className = "text-xs font-bold px-3 py-1.5 rounded-md bg-blue-900 text-blue-300 border border-blue-700";
+                video.src = finalVideoUrl;
+                video.play().catch(() => {});
+            }
+
+            badge.classList.remove('hidden');
+            save(videoUrl, name, subUrl);
+            autoFull();
+        }
+
+        function autoFull() {
+            if (document.getElementById('autoFullscreen').checked) {
+                setTimeout(() => {
+                    if (video.requestFullscreen) video.requestFullscreen();
+                }, 1000);
+            }
+        }
+
+        function save(url, name, sub) {
+            const entry = { url, name: name || url.split('/').pop(), sub };
+            history = history.filter(h => h.url !== url);
+            history.unshift(entry);
+            if (history.length > 20) history.pop();
+            localStorage.setItem('meluaHistory_v7', JSON.stringify(history));
+            render();
+        }
+
+        function render() {
+            playlist.innerHTML = '';
+            history.forEach(item => {
+                const div = document.createElement('div');
+                div.className = "flex items-center justify-between p-3 bg-gray-950 rounded-xl border border-gray-800 hover:border-blue-500 cursor-pointer group";
+                div.innerHTML = `
+                    <div class="truncate flex-1">
+                        <p class="text-sm font-bold text-gray-200 truncate group-hover:text-blue-400">${item.name}</p>
+                        <p class="text-[10px] text-gray-600 truncate">${item.url}</p>
+                    </div>
+                    <i class="fa-solid fa-play text-gray-700 group-hover:text-blue-500 ml-3"></i>
+                `;
+                div.onclick = () => {
+                    document.getElementById('streamUrl').value = item.url;
+                    document.getElementById('subtitleUrl').value = item.sub;
+                    document.getElementById('streamName').value = item.name;
+                    play(item.url, item.name, item.sub);
+                };
+                playlist.appendChild(div);
             });
         }
 
-        videoElement.addEventListener('play', () => {
-            const autoFullscreen = document.getElementById('autoFullscreen');
-            if (autoFullscreen && autoFullscreen.checked && !document.fullscreenElement) {
-                if (videoElement.requestFullscreen) {
-                    videoElement.requestFullscreen().catch(err => console.log("Fullscreen blokkolva:", err));
-                }
-            }
-        });
-
-        streamForm.addEventListener('submit', (e) => {
+        form.onsubmit = (e) => {
             e.preventDefault();
             const url = document.getElementById('streamUrl').value.trim();
+            const sub = document.getElementById('subtitleUrl').value.trim();
             const name = document.getElementById('streamName').value.trim();
-            if (url) {
-                playStream(url, name);
-            }
-        });
-
-        document.getElementById('clearHistoryBtn').addEventListener('click', () => {
-            if(confirm('Biztosan törölni szeretnéd az összes előzményt?')) {
-                streamHistory = [];
-                localStorage.removeItem('meluaPlayHistory_v3');
-                renderPlaylist();
-            }
-        });
-
-        videoElement.addEventListener('dblclick', () => {
-            if (!document.fullscreenElement) {
-                if (videoElement.requestFullscreen) videoElement.requestFullscreen();
-                else if (videoElement.webkitRequestFullscreen) videoElement.webkitRequestFullscreen();
-            } else {
-                if (document.exitFullscreen) document.exitFullscreen();
-            }
-        });
-
-        renderPlaylist();
-
-        window.addEventListener('DOMContentLoaded', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const streamUrl = urlParams.get('url');
-            const streamName = urlParams.get('name');
             
-            if (streamUrl) {
-                document.getElementById('streamUrl').value = streamUrl;
-                if(streamName) document.getElementById('streamName').value = streamName;
-                setTimeout(() => playStream(streamUrl, streamName), 300);
-            }
-        });
+            const isDirect = url.includes('.m3u8') || url.includes('.mp4') || url.includes('.mpd');
+            if (isDirect) play(url, name, sub);
+            else hunter(url, name);
+        };
 
+        document.getElementById('clearHistoryBtn').onclick = () => {
+            if(confirm('Töröljük az előzményeket?')) { history = []; localStorage.removeItem('meluaHistory_v7'); render(); }
+        };
+
+        render();
     </script>
 </body>
 </html>
+
